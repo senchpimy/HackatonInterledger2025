@@ -103,10 +103,8 @@ const CampaignsList = () => {
   useEffect(() => {
     const fetchCampaigns = async () => {
       try {
-        // Simulación de latencia eliminada para un entorno nativo más rápido, pero mantenida para fines de prueba
         await new Promise((resolve) => setTimeout(resolve, 500));
-        // Nota: Asegúrate de que la URL de Axios sea correcta para tu entorno RN (ej: 'http://<IP_LOCAL>:8080/api/campaigns')
-        const response = await axios.get("/api/campaigns");
+        const response = await axios.get("http://localhost:8080/api/campaigns");
         setCampaigns(response.data || []);
       } catch (err) {
         setError(
