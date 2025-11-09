@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"gofundme-backend/handler" // Importar el paquete de manejadores
+	"gofundme-backend/handler"
 	"gofundme-backend/store"
 
 	"github.com/gorilla/mux"
@@ -24,7 +24,6 @@ func main() {
 	api.HandleFunc("/campaigns", handler.GetCampaignsHandler).Methods("GET")
 	api.HandleFunc("/campaigns/{id:[0-9]+}", handler.GetCampaignHandler).Methods("GET")
 	api.HandleFunc("/campaigns/{id:[0-9]+}/donations", handler.CreateDonationHandler).Methods("POST")
-
 
 	// Ruta de verificación de estado
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
