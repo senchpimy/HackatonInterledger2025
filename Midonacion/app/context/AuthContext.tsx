@@ -77,35 +77,45 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   }, []);
 
   const login = async ({ username, password }: LoginArgs) => {
-    const url = `${BASE_URL}/login`;
+    try {
+      const url = `${BASE_URL}/login`;
+      const response = await axios.post(url, { username, password });
 
-    const response = await axios.post(url, { username, password });
+      if (response.status !== 200) {
+        throw new Error(response.data.message || "Failed to login");
+      }
 
-    const userData: User = response.data;
-
-    setUser(userData);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(userData));
+      const userData: User = response.data;
+      setUser(userData);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(userData));
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || error.message);
+    }
   };
 
   const register = async ({
     username,
     password,
     walletAddress,
-  }: // 🚨 MODIFICACIÓN: keyId eliminado de la desestructuración
-  RegisterArgs) => {
-    const url = `${BASE_URL}/register`;
+  }: RegisterArgs) => {
+    try {
+      const url = `${BASE_URL}/register`;
+      const response = await axios.post(url, {
+        username,
+        password,
+        walletAddress,
+      });
 
-    // 🚨 MODIFICACIÓN: keyId eliminado del payload del request
-    const response = await axios.post(url, {
-      username,
-      password,
-      walletAddress,
-    });
+      if (response.status !== 200 && response.status !== 201) {
+        throw new Error(response.data.message || "Failed to register");
+      }
 
-    const newUser: User = response.data;
-
-    setUser(newUser);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser));
+      const newUser: User = response.data;
+      setUser(newUser);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser));
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || error.message);
+    }
   };
 
   const logout = async () => {

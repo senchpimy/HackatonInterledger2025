@@ -5,7 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Dimensions, // Se mantiene por si se usa en otro lado, pero no para el ancho de tarjetas
+  Dimensions,
   SafeAreaView,
   Platform,
 } from "react-native";
@@ -25,6 +25,16 @@ interface Campaign {
   paymentPointer: string;
   createdAt: string;
 }
+
+// Obtiene el ancho de la pantalla para la responsividad
+const screenWidth = Dimensions.get("window").width;
+
+// Define el número de columnas basado en el ancho (para simular Grid)
+const getNumColumns = () => {
+  if (screenWidth > 1024) return 3;
+  if (screenWidth > 600) return 2;
+  return 1;
+};
 
 // ------------------------------------------------------------------
 // Sub-Componente: CampaignCard (Tarjeta de Campaña)
@@ -69,6 +79,7 @@ const CampaignCard = ({ campaign }: { campaign: Campaign }) => {
         </View>
 
         <View style={styles.bottomRow}>
+          {/* Simular botón de Donar dentro de la tarjeta */}
           <TouchableOpacity style={styles.donateButton}>
             <Text style={styles.donateButtonText}>Ver y Donar</Text>
           </TouchableOpacity>
@@ -84,33 +95,37 @@ const CampaignCard = ({ campaign }: { campaign: Campaign }) => {
 // ------------------------------------------------------------------
 // Sub-Componente: CampaignCardSkeleton (Carga)
 // ------------------------------------------------------------------
-// --- CAMBIO: Ya no necesita la prop `cardWidth` ---
-const CampaignCardSkeleton = () => (
-  <View style={styles.linkWrapper}>
-    <View style={[styles.card, styles.skeletonContainer]}>
-      <View
-        style={[
-          styles.skeletonLine,
-          { width: "75%", height: 20, marginBottom: 16 },
-        ]}
-      />
-      <View
-        style={[
-          styles.skeletonLine,
-          { width: "100%", height: 14, marginBottom: 8 },
-        ]}
-      />
-      <View
-        style={[
-          styles.skeletonLine,
-          { width: "83%", height: 14, marginBottom: 24 },
-        ]}
-      />
-      <View style={[styles.progressBarBackground, { marginBottom: 12 }]} />
-      <View style={styles.progressDetails}>
-        <View style={[styles.skeletonLine, { width: "25%", height: 16 }]} />
-        <View style={[styles.skeletonLine, { width: "33%", height: 16 }]} />
-      </View>
+
+const CampaignCardSkeleton = ({ cardWidth }: { cardWidth: number }) => (
+  <View
+    style={[
+      styles.card,
+      styles.skeletonContainer,
+      { width: cardWidth, marginBottom: 20 },
+    ]}
+  >
+    <View
+      style={[
+        styles.skeletonLine,
+        { width: "75%", height: 20, marginBottom: 16 },
+      ]}
+    />
+    <View
+      style={[
+        styles.skeletonLine,
+        { width: "100%", height: 14, marginBottom: 8 },
+      ]}
+    />
+    <View
+      style={[
+        styles.skeletonLine,
+        { width: "83%", height: 14, marginBottom: 24 },
+      ]}
+    />
+    <View style={[styles.progressBarBackground, { marginBottom: 12 }]} />
+    <View style={styles.progressDetails}>
+      <View style={[styles.skeletonLine, { width: "25%", height: 16 }]} />
+      <View style={[styles.skeletonLine, { width: "33%", height: 16 }]} />
     </View>
   </View>
 );
@@ -168,15 +183,19 @@ const CampaignsList = () => {
     fetchCampaigns();
   }, []);
 
-  // --- CAMBIO: Se eliminó toda la lógica de cálculo de columnas y ancho ---
+  // Calcula el ancho de cada columna para el grid y el espaciado
+  const COLUMN_SPACING = 20;
+  const numColumns = getNumColumns();
+  // El cálculo se mantiene, pero la distribución del espacio ahora depende de marginRight
+  const cardWidth =
+    (screenWidth - 20 * 2 - (numColumns - 1) * COLUMN_SPACING) / numColumns;
 
   const renderContent = () => {
     if (loading) {
       return (
         <View style={styles.listContainer}>
-          {/* Renderiza 6 esqueletos de carga como placeholder */}
-          {[...Array(6)].map((_, i) => (
-            <CampaignCardSkeleton key={i} />
+          {[...Array(numColumns * 2)].map((_, i) => (
+            <CampaignCardSkeleton key={i} cardWidth={cardWidth} />
           ))}
         </View>
       );
@@ -200,6 +219,7 @@ const CampaignsList = () => {
           </Text>
           <TouchableOpacity
             style={styles.createButton}
+            // Corregida la ruta basada en tu estructura de carpetas (app/campaigns/CreateCampaign.tsx)
             onPress={() => router.push("/campaigns/CreateCampaign")}
           >
             <Text style={styles.createButtonText}>Crear Nueva Campaña</Text>
@@ -210,52 +230,69 @@ const CampaignsList = () => {
 
     return (
       <View style={styles.listContainer}>
-        {campaigns.map((campaign) => (
-          // --- CAMBIO: Se simplificó el TouchableOpacity ---
-          // Ahora usa el `linkWrapper` de la hoja de estilos, que contiene
-          // las reglas de flexbox para un diseño responsivo.
-          <Link href={`/campaigns/${campaign.id}`} key={campaign.id} asChild>
-            <TouchableOpacity style={styles.linkWrapper}>
-              <CampaignCard campaign={campaign} />
-            </TouchableOpacity>
-          </Link>
-        ))}
+        {campaigns.map((campaign, index) => {
+          // Calcula si es la última columna de la fila para NO aplicar marginRight
+          const isLastColumn = (index + 1) % numColumns === 0;
+
+          return (
+            <Link href={`/campaigns/${campaign.id}`} key={campaign.id} asChild>
+              <TouchableOpacity
+                style={[
+                  styles.linkWrapper,
+                  {
+                    width: cardWidth,
+                    // Aplicamos marginRight si NO es la última columna, usando el espaciado definido
+                    marginRight: isLastColumn ? 0 : COLUMN_SPACING,
+                    // Mantenemos el marginBottom para el espaciado vertical
+                    marginBottom: 20,
+                  },
+                ]}
+              >
+                <CampaignCard campaign={campaign} />
+              </TouchableOpacity>
+            </Link>
+          );
+        })}
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.mainHeader}>
-          <Text style={styles.appTitle}>AIDLOOP</Text>
-          <Text style={styles.headerSubtitle}>
-            Donaciones transparentes y rastreables usando Interledger.
-          </Text>
-        </View>
-        <StatisticsSection />
-        <View style={styles.sectionSeparator} />
-        <Text style={styles.sectionTitle}>
-          {loading
-            ? "Cargando Campañas..."
-            : `Campañas Activas (${campaigns.length})`}
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* Encabezado Principal */}
+      <View style={styles.mainHeader}>
+        <Text style={styles.appTitle}>AIDLOOP</Text>
+        <Text style={styles.headerSubtitle}>
+          Donaciones transparentes y rastreables usando Interledger.
         </Text>
-        {renderContent()}
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+
+      {/* Sección de Estadísticas/Misión */}
+      <StatisticsSection />
+
+      <View style={styles.sectionSeparator} />
+
+      <Text style={styles.sectionTitle}>
+        {loading
+          ? "Cargando Campañas..."
+          : `Campañas Activas (${campaigns.length})`}
+      </Text>
+
+      {renderContent()}
+    </ScrollView>
   );
 };
 
 export default CampaignsList;
 
 // ------------------------------------------------------------------
-// Estilos de React Native
+// Estilos de React Native (Diseño Oscuro 🌑 y Corregidos)
 // ------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#0f172a", // Fondo oscuro principal
   },
   container: {
     padding: 20,
@@ -271,7 +308,7 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 36,
     fontWeight: "900",
-    color: "#34d399",
+    color: "#34d399", // Color principal de AIDLOOP
   },
   headerSubtitle: {
     fontSize: 16,
@@ -291,25 +328,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: "center",
   },
+  // Contenedor de lista: ¡QUITAMOS justifyContent: "space-between" para evitar el error!
   listContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center", // Centra las tarjetas en el contenedor
+    // justifyContent: "space-between", <-- ELIMINADO
   },
-  // --- CAMBIO CLAVE: Estilos para el contenedor de la tarjeta ---
+  // Estilos de la tarjeta de campaña
   linkWrapper: {
-    flexGrow: 1, // Permite que el elemento crezca
-    flexShrink: 1, // Permite que el elemento se encoja
-    flexBasis: 300, // Ancho base ideal del elemento antes de crecer/encogerse
+    // El ancho y los márgenes se establecen dinámicamente en renderContent
     minHeight: 250,
-    margin: 10, // Espaciado simple y consistente alrededor de cada tarjeta
-    maxWidth: "100%", // Asegura que en pantallas muy pequeñas no se desborde
   },
   card: {
     backgroundColor: "#1f2937",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
     flex: 1,
     padding: 16,
   },
@@ -394,6 +433,7 @@ const styles = StyleSheet.create({
     color: "#60a5fa",
     fontSize: 14,
   },
+  // Estilos de Campañas Vacías/Error/Skeleton
   errorContainer: {
     backgroundColor: "rgba(127, 29, 29, 0.3)",
     borderWidth: 1,
@@ -435,6 +475,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: "#0d9488",
     borderRadius: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   createButtonText: {
     color: "white",

@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
+// Asume que esta ruta es correcta para tu AuthContext
 import { useAuth } from "../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -20,10 +21,10 @@ export default function AuthPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
-  // 🚨 ELIMINADO: const [keyId, setKeyId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Usa el hook de autenticación
   const { login, register } = useAuth();
   const router = useRouter();
 
@@ -40,14 +41,13 @@ export default function AuthPage() {
         }
         await login({ username, password });
       } else {
-        // 🚨 MODIFICACIÓN: Eliminamos la validación de keyId
+        // Validación de Registro
         if (!username || !password || !walletAddress) {
           setError("Todos los campos son obligatorios para el registro.");
           setLoading(false);
           return;
         }
 
-        // 🚨 MODIFICACIÓN: Eliminamos keyId de los argumentos de register
         await register({
           username,
           password,
@@ -77,17 +77,45 @@ export default function AuthPage() {
     setWalletAddress("");
   };
 
+  const formTitle = isLogin ? "Accede a tu cuenta" : "Únete a la red de ayuda";
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#0f172a" }}
+      style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.card}>
-          <Text style={styles.headerTitle}>
-            {isLogin ? "Iniciar Sesión" : "Registrarse"}
+        {/* ---------------------------------------------------- */}
+        {/* SECCIÓN INFORMATIVA (AIDLOOP) */}
+        {/* ---------------------------------------------------- */}
+        <View style={styles.infoContainer}>
+          <Text style={styles.appTitle}>AIDLOOP</Text>
+          <Text style={styles.slogan}>
+            Una forma simple y abierta de ayudar.
           </Text>
+          <View style={styles.benefitBox}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={24}
+              color="#34d399"
+            />
+            <Text style={styles.benefitText}>
+              Transparencia: Verifica cómo se usa el dinero.
+            </Text>
+          </View>
+          <View style={styles.benefitBox}>
+            <Ionicons name="git-network-outline" size={24} color="#34d399" />
+            <Text style={styles.benefitText}>
+              Conexión: Ayuda directa a causas reales usando Open Payments.
+            </Text>
+          </View>
+        </View>
+
+        {/* ---------------------------------------------------- */}
+        {/* FORMULARIO DE AUTENTICACIÓN */}
+        {/* ---------------------------------------------------- */}
+        <View style={styles.card}>
+          <Text style={styles.headerTitle}>{formTitle}</Text>
 
           <View style={styles.form}>
             {/* Campo de Nombre de Usuario */}
@@ -117,19 +145,22 @@ export default function AuthPage() {
             {/* Campos de Registro */}
             {!isLogin && (
               <>
-                <View style={[styles.formGroup, { marginBottom: 30 }]}>
-                  <Text style={styles.label}>Wallet Address URL</Text>
+                <View style={[styles.formGroup, { marginBottom: 20 }]}>
+                  <Text style={styles.label}>
+                    Wallet Address (Payment Pointer) *
+                  </Text>
                   <TextInput
                     style={styles.input}
                     placeholderTextColor="#9ca3af"
                     value={walletAddress}
                     onChangeText={setWalletAddress}
-                    placeholder="https://wallet.example.com/users/alice"
+                    placeholder="ej: $wallet.example.com/aiduser"
                     autoCapitalize="none"
                   />
+                  <Text style={styles.helpText}>
+                    Necesitas una Wallet Address compatible con Open Payments.
+                  </Text>
                 </View>
-                {/* 🚨 ELIMINADO: Campo de Key ID */}
-                {/* 🚨 ELIMINADO: Campo de Private Key */}
               </>
             )}
 
@@ -165,7 +196,7 @@ export default function AuthPage() {
             <TouchableOpacity onPress={toggleAuthMode}>
               <Text style={styles.toggleText}>
                 {isLogin
-                  ? "¿No tienes una cuenta? Regístrate"
+                  ? "¿No tienes una cuenta? Regístrate en AIDLOOP"
                   : "¿Ya tienes una cuenta? Inicia sesión"}
               </Text>
             </TouchableOpacity>
@@ -177,21 +208,57 @@ export default function AuthPage() {
 }
 
 // ------------------------------------------------------------------
-// Estilos de React Native
+// Estilos de React Native (Diseño Oscuro 🌑)
 // ------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0f172a", // Fondo muy oscuro
+  },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "#0f172a",
   },
+
+  // Estilos de la Sección Informativa
+  infoContainer: {
+    alignItems: "center",
+    marginBottom: 40,
+    paddingHorizontal: 10,
+  },
+  appTitle: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: "#34d399", // Verde-Teal brillante
+    marginBottom: 5,
+  },
+  slogan: {
+    fontSize: 16,
+    color: "#94a3b8", // Gris suave
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  benefitBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingHorizontal: 20,
+  },
+  benefitText: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: "white",
+    fontWeight: "500",
+  },
+
+  // Estilos del Formulario (Card)
   card: {
     width: "100%",
     maxWidth: 450,
     alignSelf: "center",
-    backgroundColor: "#1f2937",
+    backgroundColor: "#1f2937", // Fondo de tarjeta oscuro
     padding: 32,
     borderRadius: 12,
     shadowColor: "#000",
@@ -221,7 +288,7 @@ const styles = StyleSheet.create({
   },
   input: {
     height: 45,
-    backgroundColor: "#374151",
+    backgroundColor: "#374151", // Fondo de input oscuro
     borderColor: "#4b5563",
     borderWidth: 1,
     borderRadius: 6,
@@ -229,10 +296,10 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
   },
-  textarea: {
-    height: 120,
-    textAlignVertical: "top",
-    paddingTop: 10,
+  helpText: {
+    marginTop: 5,
+    fontSize: 12,
+    color: "#9ca3af",
   },
   errorBox: {
     flexDirection: "row",
@@ -255,7 +322,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: "#3b82f6",
+    backgroundColor: "#059669", // Botón principal verde
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -277,7 +344,7 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     fontSize: 14,
-    color: "#60a5fa",
+    color: "#34d399", // Enlace verde
     textDecorationLine: "underline",
   },
 });
