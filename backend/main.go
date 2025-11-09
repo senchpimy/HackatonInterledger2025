@@ -29,6 +29,7 @@ func main() {
 	api.HandleFunc("/payments/initiate", handler.InitiatePaymentHandler).Methods("POST")
 	api.HandleFunc("/payments/finalize", handler.FinalizePaymentHandler).Methods("POST")
 	api.HandleFunc("/chat", handler.ChatHandler).Methods("POST")
+	api.HandleFunc("/all-campaigns", handler.GetAllCampaignsForIndexingHandler).Methods("GET")
 
 	// Ruta de verificación de estado
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -93,3 +93,17 @@ func GetCampaignHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(campaign)
 }
+
+func GetAllCampaignsForIndexingHandler(w http.ResponseWriter, r *http.Request) {
+	// Usamos la función que ya existe en el store para obtener todas las campañas
+	campaigns, err := store.GetCampaigns()
+	if err != nil {
+		// No necesitas loguear aquí porque store.GetCampaigns ya lo hace
+		http.Error(w, "Error al obtener las campañas de la base de datos", http.StatusInternalServerError)
+		return
+	}
+
+	// Establecemos la cabecera y enviamos la respuesta en formato JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(campaigns)
+}

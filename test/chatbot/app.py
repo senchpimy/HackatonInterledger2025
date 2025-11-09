@@ -1,8 +1,9 @@
 import google.genai as genai
 import chromadb
-import pandas as pd
+# import pandas as pd # <-- Ya no necesitamos pandas
 import os
-import re  # 🌟 NUEVO: Importamos regex para extraer la URL
+import re
+import requests # <-- NUEVO: Para hacer peticiones HTTP
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS 
 
@@ -11,7 +12,9 @@ EMBEDDING_MODEL = 'text-embedding-004'
 CHAT_MODEL = 'gemini-2.5-flash'          
 
 PERSIST_DIRECTORY = "chroma_db_data" 
-FLASK_PORT = 5218 # O el puerto que tengas libre
+FLASK_PORT = 5218
+# NUEVA CONSTANTE: La URL de nuestro backend de Go
+GO_API_URL = "http://localhost:8080/api/all-campaigns"
 
 app = Flask(__name__)
 CORS(app) 
@@ -24,34 +27,26 @@ except Exception as e:
 client_chroma = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
 collection = client_chroma.get_or_create_collection(name="mi_base_de_conocimiento")
 
-# 2. Datos de ejemplo (Sin cambios)
-data = {
-    'id': [101, 102, 103, 104, 105],
-    'titulo': [
-        "Fondo Global para la Conservación de Océanos",
-        "Asociación de Apoyo Educativo para Niños",
-        "Albergue de Rescate Animal 'Patitas Felices'",
-        "Iniciativa para el Suministro de Agua Potable",
-        "Red de Asistencia a Personas Mayores en Hogares"
-    ],
-    'descripcion': [
-        "Asociación dedicada a la limpieza de plásticos marinos y protección de especies. Necesitan voluntarios para eventos de limpieza de playas.",
-        "Ofrece becas y tutorías a niños de comunidades de bajos ingresos. Buscan donaciones para útiles escolares.",
-        "Rescata perros y gatos abandonados, proporcionando atención veterinaria y buscando adopción. Necesitan pienso y mantas.",
-        "Organización que instala filtros de agua en zonas rurales con escasez. Buscan financiación para la compra de materiales.",
-        "Proporciona compañía, alimentos y medicinas a personas mayores que viven solas. Se buscan voluntarios para visitas semanales."
-    ],
-    'preferencias': [
-        "Medio Ambiente, Animales, Voluntariado, Océanos, Global, Cambio Climático",
-        "Educación, Niños, Becas, Tutoría, Local, Pobreza",
-        "Animales, Mascotas, Adopción, Pienso, Local, Veterinaria",
-        "Salud, Suministro, Agua, Zonas Rurales, Financiación, Infraestructura",
-        "Salud, Personas Mayores, Compañía, Voluntariado, Hogares, Comunidad"
-    ]
-}
-df = pd.DataFrame(data)
+# --- 2. FASE DE OBTENCIÓN DE DATOS (AHORA DESDE LA API) ---
+def fetch_campaigns_from_go_api():
+    """Obtiene los datos de las campañas desde el backend de Go."""
+    try:
+        print(f"Obteniendo campañas desde: {GO_API_URL}")
+        response = requests.get(GO_API_URL, timeout=10) # Timeout de 10 segundos
+        response.raise_for_status() # Lanza un error si la respuesta no es 2xx
+        campaigns = response.json()
+        if not campaigns:
+            print("Advertencia: La API de Go no devolvió campañas.")
+            return []
+        print(f"Se obtuvieron {len(campaigns)} campañas de la API de Go.")
+        return campaigns
+    except requests.exceptions.RequestException as e:
+        print(f"\n❌ ERROR CRÍTICO: No se pudo conectar con la API de Go en {GO_API_URL}.")
+        print(f"   Asegúrate de que el servidor de Go esté corriendo en el puerto 8080.")
+        print(f"   Error original: {e}")
+        return None # Devolvemos None para indicar un fallo
 
-# 3. FASE DE INDEXACIÓN
+# 3. FASE DE INDEXACIÓN (MODIFICADA)
 
 def get_gemini_embedding(text):
     response = client_gemini.models.embed_content(
@@ -61,41 +56,53 @@ def get_gemini_embedding(text):
     return response.embeddings[0].values
 
 def indexar_datos():
-    if collection.count() == 0:
-        print("--- Indexando datos con Google Gemini (Causas de Beneficencia) ---")
-        documentos = []
-        metadatos = []
-        ids = []
+    # Primero, borramos la colección antigua para asegurar datos frescos
+    client_chroma.delete_collection(name="mi_base_de_conocimiento")
+    collection = client_chroma.get_or_create_collection(name="mi_base_de_conocimiento")
+    print("--- Colección antigua eliminada. Preparando para re-indexar. ---")
+    
+    campaigns_data = fetch_campaigns_from_go_api()
+    
+    # Si la API falló, no continuamos con la indexación
+    if campaigns_data is None:
+        print("--- Indexación abortada debido a un error de conexión con la API. ---")
+        return
 
-        for index, row in df.iterrows():
-            # 🌟 MODIFICACIÓN 1: Incluimos el ID en el texto que Gemini leerá
-            texto_completo = (
-                f"ID de la Causa: {row['id']}. " # <-- El ID ahora es visible para el LLM
-                f"Título: {row['titulo']}. "
-                f"Descripción: {row['descripcion']}. "
-                f"Preferencias/Etiquetas clave: {row['preferencias']}"
-            )
-            documentos.append(texto_completo)
-            metadatos.append({'titulo': row['titulo'], 'preferencias': row['preferencias']}) 
-            ids.append(str(row['id']))
+    if not campaigns_data:
+        print("--- No hay datos para indexar. ---")
+        return
 
-        try:
-            embeddings_list = [get_gemini_embedding(doc) for doc in documentos]
-            collection.add(
-                embeddings=embeddings_list,
-                documents=documentos,
-                metadatas=metadatos,
-                ids=ids
-            )
-            print(f"--- Indexación completa. Documentos guardados en '{PERSIST_DIRECTORY}'. ---")
-        except Exception as e:
-            print(f"\n❌ ERROR CRÍTICO DE INDEXACIÓN: {e}")
-            
-    else:
-        print(f"--- Colección ya indexada ({collection.count()} documentos). Cargando desde '{PERSIST_DIRECTORY}'. ---")
+    print(f"--- Indexando {len(campaigns_data)} campañas desde la API de Go ---")
+    documentos = []
+    metadatos = []
+    ids = []
 
-with app.app_context():
-    indexar_datos()
+    # ❗️ IMPORTANTE: El JSON de Go usa mayúsculas iniciales (Title, Description, etc.)
+    for campaign in campaigns_data:
+        texto_completo = (
+            f"ID de la Causa: {campaign['ID']}. "
+            f"Título: {campaign['Title']}. "
+            f"Descripción: {campaign['Description']}. "
+            # Podemos añadir más campos si son útiles para el contexto
+            f"Meta de recaudación: {campaign['Goal']} {campaign['Currency']}. "
+            f"Creador: {campaign['CreatorUsername']}."
+        )
+        documentos.append(texto_completo)
+        # Los metadatos son opcionales, pero útiles si los necesitas
+        metadatos.append({'titulo': campaign['Title']}) 
+        ids.append(str(campaign['ID']))
+
+    try:
+        embeddings_list = [get_gemini_embedding(doc) for doc in documentos]
+        collection.add(
+            embeddings=embeddings_list,
+            documents=documentos,
+            metadatas=metadatos,
+            ids=ids
+        )
+        print(f"--- Indexación completa. Documentos guardados en '{PERSIST_DIRECTORY}'. ---")
+    except Exception as e:
+        print(f"\n❌ ERROR CRÍTICO DE INDEXACIÓN: {e}")
 
 # --- 4. FUNCIÓN CENTRAL DEL CHATBOT RAG (Generación) ---
 
