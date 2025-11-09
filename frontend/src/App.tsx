@@ -1,3 +1,4 @@
+import React, { type ReactNode } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -11,7 +12,7 @@ import CreateCampaign from './pages/CreateCampaign';
 import CampaignDetails from './pages/CampaignDetails';
 import AuthPage from './pages/Auth';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import React, { ReactNode } from 'react';
+import Chatbot from './components/Chatbot'; // Import the Chatbot component
 
 const Navbar: React.FC = () => {
   const { user, logout, isLoading } = useAuth();
@@ -34,6 +35,12 @@ const Navbar: React.FC = () => {
             className="px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-md transition-colors duration-300"
           >
             Campañas
+          </Link>
+          <Link
+            to="/chat"
+            className="px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-md transition-colors duration-300"
+          >
+            Chatbot
           </Link>
           {isLoading ? null : user ? (
             <>
@@ -93,6 +100,7 @@ const AppLayout: React.FC = () => {
           <Route path="/" element={<CampaignsList />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/campaigns/:id" element={<CampaignDetails />} />
+          <Route path="/chat" element={<Chatbot />} /> {/* New Chatbot Route */}
           <Route
             path="/create"
             element={
