@@ -11,7 +11,7 @@ EMBEDDING_MODEL = 'text-embedding-004'
 CHAT_MODEL = 'gemini-2.5-flash'          
 
 PERSIST_DIRECTORY = "chroma_db_data" 
-FLASK_PORT = 5214 # O el puerto que tengas libre
+FLASK_PORT = 5218 # O el puerto que tengas libre
 
 app = Flask(__name__)
 CORS(app) 
