@@ -16,11 +16,9 @@ interface User {
   id: number;
   username: string;
   walletAddress: string;
-  // 🚨 ELIMINADO: keyId ya no es parte de la data del usuario persistente
   token?: string;
 }
 
-// 🚨 MODIFICACIÓN: keyId eliminada de los argumentos de registro
 interface RegisterArgs {
   username: string;
   password: string;
