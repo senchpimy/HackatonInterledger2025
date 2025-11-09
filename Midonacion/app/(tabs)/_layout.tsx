@@ -7,8 +7,8 @@ export default function TabLayout() {
     // Componente Tabs del Expo Router
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#007AFF", // Color del icono activo
-        headerShown: false, // Oculta el encabezado en las pestañas
+        tabBarActiveTintColor: "#007AFF",
+        headerShown: false,
         // Si quieres el encabezado, usa: headerShown: true
       }}
     >
@@ -25,7 +25,7 @@ export default function TabLayout() {
 
       {/* 2. USUARIO (Mapeado a user.tsx) */}
       <Tabs.Screen
-        name="c"
+        name="user" // Corregido: asumí que debería ser "user"
         options={{
           title: "Usuario",
           tabBarIcon: ({ color }) => (
@@ -34,46 +34,38 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 3. CREAR APOYO (Mapeado a create-support.tsx) */}
+      {/* 3. LISTA DE CAMPAÑAS (CampaignsList.tsx) */}
       <Tabs.Screen
-        name="create-support"
+        name="CampaignsList" // Nombre del archivo CampaignsList.tsx
         options={{
-          title: "Crear Apoyo",
+          title: "Campañas",
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="list" size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* 4. CREAR CAMPAÑA (CreateCampaign.tsx) */}
+      <Tabs.Screen
+        name="CreateCampaign" // Nombre del archivo CreateCampaign.tsx
+        options={{
+          title: "Crear",
           tabBarIcon: ({ color }) => (
             <Ionicons name="add-circle" size={24} color={color} />
           ),
         }}
       />
 
-      {/* 4. VALIDAR (Mapeado a validate.tsx) */}
+      {/* 5. DETALLES DE CAMPAÑA (CampaignDetails.tsx) - Oculta la pestaña */}
       <Tabs.Screen
-        name="validate"
+        name="CampaignDetails" // Nombre del archivo CampaignDetails.tsx
         options={{
-          title: "Validar",
+          // Este es un detalle, lo ocultamos de la barra de pestañas principal
+          href: null,
+          title: "Detalles",
+          // Puedes dejar o quitar el icono si está oculto
           tabBarIcon: ({ color }) => (
-            <Ionicons name="checkmark-circle" size={24} color={color} />
-          ),
-        }}
-      />
-
-      {/* 5. VER QUE TE HAN DONADO (Mapeado a received-donations.tsx) */}
-      <Tabs.Screen
-        name="received-donations"
-        options={{
-          title: "Mis Donaciones",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="wallet" size={24} color={color} />
-          ),
-        }}
-      />
-
-      {/* 6. VER OTRAS DONACIONES (Mapeado a other-donations.tsx) */}
-      <Tabs.Screen
-        name="other-donations"
-        options={{
-          title: "Ver Donaciones",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="gift" size={24} color={color} />
+            <Ionicons name="document-text" size={24} color={color} />
           ),
         }}
       />
