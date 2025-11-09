@@ -2,9 +2,11 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const CreateCampaign = () => {
   const navigate = useNavigate();
+  const { user } = useAuth(); // Obtener el usuario del contexto
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -24,6 +26,11 @@ const CreateCampaign = () => {
     e.preventDefault();
     setError(null);
 
+    if (!user) {
+      setError('Debes iniciar sesión para crear una campaña.');
+      return;
+    }
+
     if (!formData.title || !formData.goal || !formData.paymentPointer) {
       setError('Por favor, completa todos los campos obligatorios.');
       return;
@@ -41,6 +48,7 @@ const CreateCampaign = () => {
       await axios.post('/api/campaigns', {
         ...formData,
         goal: goalNumber,
+        userId: user.id, // Añadir el ID del usuario a la petición
       });
       
       navigate('/');
