@@ -14,7 +14,7 @@ type IlpStreamConnection struct {
 }
 
 type FinalResponse struct {
-	ID                  string              `json:"id"`
+	ID                  string              `json:"ID"`
 	PaymentPointer      string              `json:"paymentPointer"`
 	IncomingAmount      Amount              `json:"incomingAmount"`
 	IlpStreamConnection IlpStreamConnection `json:"ilpStreamConnection"`

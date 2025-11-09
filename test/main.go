@@ -103,7 +103,7 @@ func main() {
 		Payload: rs.CreateIncomingPaymentJSONBody{
 			WalletAddressSchema: *receivingWalletAddress.Id,
 			IncomingAmount: &rs.Amount{
-				Value:      "1000",
+				Value:      "1700",
 				AssetCode:  receivingWalletAddress.AssetCode,
 				AssetScale: receivingWalletAddress.AssetScale,
 			},

@@ -26,6 +26,8 @@ func main() {
 	api.HandleFunc("/campaigns/{id:[0-9]+}/donations", handler.CreateDonationHandler).Methods("POST")
 	api.HandleFunc("/register", handler.RegisterUser).Methods("POST")
 	api.HandleFunc("/login", handler.LoginUser).Methods("POST")
+	api.HandleFunc("/payments/initiate", handler.InitiatePaymentHandler).Methods("POST")
+	api.HandleFunc("/payments/finalize", handler.FinalizePaymentHandler).Methods("POST")
 
 	// Ruta de verificación de estado
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -47,9 +47,7 @@ func CreateDonationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Open Payments usa unidades menores (ej. centavos). Convertimos el monto.
 	amountInMinorUnits := int64(math.Round(req.Amount * 100))
-
 	description := "Donación para la campaña: " + campaign.Title
 
 	incomingPayment, err := opClient.CreateIncomingPayment(r.Context(), campaign.PaymentPointer, amountInMinorUnits, description)
@@ -59,6 +57,6 @@ func CreateDonationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK) // Se devuelve 200 OK porque la acción de crear la "invitación" fue exitosa.
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(incomingPayment)
 }

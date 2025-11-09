@@ -76,3 +76,23 @@ func GetCampaignByID(id int) (*model.Campaign, error) {
 	return &campaign, nil
 }
 
+func GetCampaignByPaymentPointer(paymentPointer string, db *sql.DB) (*model.Campaign, error) {
+	query := `
+		SELECT c.id, c.title, c.description, c.goal, c.amount_raised, c.currency, c.payment_pointer, c.created_at, u.username
+		FROM campaigns c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.payment_pointer = ?;
+	`
+	row := db.QueryRow(query, paymentPointer)
+
+	var campaign model.Campaign
+	if err := row.Scan(&campaign.ID, &campaign.Title, &campaign.Description, &campaign.Goal, &campaign.AmountRaised, &campaign.Currency, &campaign.PaymentPointer, &campaign.CreatedAt, &campaign.CreatorUsername); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No encontrado no es un error de aplicación
+		}
+		log.Printf("Error al escanear fila de campaña: %v", err)
+		return nil, err
+	}
+
+	return &campaign, nil
+}
