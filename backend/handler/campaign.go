@@ -2,20 +2,44 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	"gofundme-backend/model"
 	"gofundme-backend/store"
+
+	"github.com/gorilla/mux"
 )
 
 func CreateCampaignHandler(w http.ResponseWriter, r *http.Request) {
-	var campaign model.Campaign
-	if err := json.NewDecoder(r.Body).Decode(&campaign); err != nil {
+	var requestBody struct {
+		Title          string  `json:"title"`
+		Description    string  `json:"description"`
+		Goal           float64 `json:"goal"`
+		Currency       string  `json:"currency"`
+		PaymentPointer string  `json:"paymentPointer"`
+		UserID         int     `json:"userId"` // El ID del usuario que crea la campaña
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		http.Error(w, "Cuerpo de la petición inválido", http.StatusBadRequest)
 		return
+	}
+
+	if requestBody.UserID == 0 {
+		http.Error(w, "El ID del usuario es obligatorio", http.StatusBadRequest)
+		return
+	}
+
+	campaign := model.Campaign{
+		UserID:         requestBody.UserID,
+		Title:          requestBody.Title,
+		Description:    requestBody.Description,
+		Goal:           requestBody.Goal,
+		Currency:       requestBody.Currency,
+		PaymentPointer: requestBody.PaymentPointer,
 	}
 
 	id, err := store.CreateCampaign(campaign)
@@ -35,6 +59,7 @@ func CreateCampaignHandler(w http.ResponseWriter, r *http.Request) {
 func GetCampaignsHandler(w http.ResponseWriter, r *http.Request) {
 	campaigns, err := store.GetCampaigns()
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "No se pudieron recuperar las campañas", http.StatusInternalServerError)
 		return
 	}
@@ -47,17 +72,20 @@ func GetCampaignHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "ID de campaña inválido", http.StatusBadRequest)
 		return
 	}
 
 	campaign, err := store.GetCampaignByID(id)
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "Error al recuperar la campaña", http.StatusInternalServerError)
 		return
 	}
 
 	if campaign == nil {
+		log.Println(err)
 		http.Error(w, "Campaña no encontrada", http.StatusNotFound)
 		return
 	}

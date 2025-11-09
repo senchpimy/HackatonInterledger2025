@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"gofundme-backend/handler" // Importar el paquete de manejadores
+	"gofundme-backend/handler"
 	"gofundme-backend/store"
 
 	"github.com/gorilla/mux"
@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Inicializar la base de datos
-	store.InitDB("gofundme.db")
+	store.InitDB("bd.db")
 	log.Println("Base de datos inicializada correctamente.")
 
 	r := mux.NewRouter()
@@ -24,15 +24,30 @@ func main() {
 	api.HandleFunc("/campaigns", handler.GetCampaignsHandler).Methods("GET")
 	api.HandleFunc("/campaigns/{id:[0-9]+}", handler.GetCampaignHandler).Methods("GET")
 	api.HandleFunc("/campaigns/{id:[0-9]+}/donations", handler.CreateDonationHandler).Methods("POST")
-
+	api.HandleFunc("/register", handler.RegisterUser).Methods("POST")
+	api.HandleFunc("/login", handler.LoginUser).Methods("POST")
 
 	// Ruta de verificación de estado
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "API de GoFundMe está en funcionamiento")
 	}).Methods("GET")
 
+	// Middleware de CORS
+	corsHandler := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
 	log.Println("Servidor escuchando en http://localhost:8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(":8080", corsHandler(r)); err != nil {
 		log.Fatal(err)
 	}
 }
