@@ -14,10 +14,32 @@ import (
 )
 
 func CreateCampaignHandler(w http.ResponseWriter, r *http.Request) {
-	var campaign model.Campaign
-	if err := json.NewDecoder(r.Body).Decode(&campaign); err != nil {
+	var requestBody struct {
+		Title          string  `json:"title"`
+		Description    string  `json:"description"`
+		Goal           float64 `json:"goal"`
+		Currency       string  `json:"currency"`
+		PaymentPointer string  `json:"paymentPointer"`
+		UserID         int     `json:"userId"` // El ID del usuario que crea la campaña
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		http.Error(w, "Cuerpo de la petición inválido", http.StatusBadRequest)
 		return
+	}
+
+	if requestBody.UserID == 0 {
+		http.Error(w, "El ID del usuario es obligatorio", http.StatusBadRequest)
+		return
+	}
+
+	campaign := model.Campaign{
+		UserID:         requestBody.UserID,
+		Title:          requestBody.Title,
+		Description:    requestBody.Description,
+		Goal:           requestBody.Goal,
+		Currency:       requestBody.Currency,
+		PaymentPointer: requestBody.PaymentPointer,
 	}
 
 	id, err := store.CreateCampaign(campaign)
