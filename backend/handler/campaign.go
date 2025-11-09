@@ -2,13 +2,15 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	"gofundme-backend/model"
 	"gofundme-backend/store"
+
+	"github.com/gorilla/mux"
 )
 
 func CreateCampaignHandler(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +37,7 @@ func CreateCampaignHandler(w http.ResponseWriter, r *http.Request) {
 func GetCampaignsHandler(w http.ResponseWriter, r *http.Request) {
 	campaigns, err := store.GetCampaigns()
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "No se pudieron recuperar las campañas", http.StatusInternalServerError)
 		return
 	}
@@ -47,17 +50,20 @@ func GetCampaignHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "ID de campaña inválido", http.StatusBadRequest)
 		return
 	}
 
 	campaign, err := store.GetCampaignByID(id)
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "Error al recuperar la campaña", http.StatusInternalServerError)
 		return
 	}
 
 	if campaign == nil {
+		log.Println(err)
 		http.Error(w, "Campaña no encontrada", http.StatusNotFound)
 		return
 	}
