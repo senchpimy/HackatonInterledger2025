@@ -2,6 +2,7 @@ import google.genai as genai
 import chromadb
 import pandas as pd
 import os
+import re  # 🌟 NUEVO: Importamos regex para extraer la URL
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS 
 
@@ -9,25 +10,21 @@ from flask_cors import CORS
 EMBEDDING_MODEL = 'text-embedding-004'  
 CHAT_MODEL = 'gemini-2.5-flash'          
 
-# Directorio donde se guardarán los embeddings (Persistencia)
 PERSIST_DIRECTORY = "chroma_db_data" 
-FLASK_PORT = 5209 # Puerto 5204 (o el que tengas libre)
+FLASK_PORT = 5214 # O el puerto que tengas libre
 
-# Inicializar Flask
 app = Flask(__name__)
 CORS(app) 
 
-# Inicializar el cliente de Gemini
 try:
     client_gemini = genai.Client()
 except Exception as e:
     print(f"Error al inicializar el cliente de Gemini: {e}")
     
-# Inicializar ChromaDB (PERSISTENTE)
 client_chroma = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
 collection = client_chroma.get_or_create_collection(name="mi_base_de_conocimiento")
 
-# 2. Datos de ejemplo (Base de Conocimiento de Beneficencia)
+# 2. Datos de ejemplo (Sin cambios)
 data = {
     'id': [101, 102, 103, 104, 105],
     'titulo': [
@@ -54,10 +51,9 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# 3. FASE DE INDEXACIÓN (Correcta)
+# 3. FASE DE INDEXACIÓN
 
 def get_gemini_embedding(text):
-    """Obtiene el embedding de un texto usando el modelo de Gemini."""
     response = client_gemini.models.embed_content(
         model=EMBEDDING_MODEL,
         contents=text 
@@ -65,8 +61,6 @@ def get_gemini_embedding(text):
     return response.embeddings[0].values
 
 def indexar_datos():
-    """Genera embeddings e indexa los documentos SOLO si la colección está vacía."""
-    
     if collection.count() == 0:
         print("--- Indexando datos con Google Gemini (Causas de Beneficencia) ---")
         documentos = []
@@ -74,7 +68,9 @@ def indexar_datos():
         ids = []
 
         for index, row in df.iterrows():
+            # 🌟 MODIFICACIÓN 1: Incluimos el ID en el texto que Gemini leerá
             texto_completo = (
+                f"ID de la Causa: {row['id']}. " # <-- El ID ahora es visible para el LLM
                 f"Título: {row['titulo']}. "
                 f"Descripción: {row['descripcion']}. "
                 f"Preferencias/Etiquetas clave: {row['preferencias']}"
@@ -85,7 +81,6 @@ def indexar_datos():
 
         try:
             embeddings_list = [get_gemini_embedding(doc) for doc in documentos]
-            
             collection.add(
                 embeddings=embeddings_list,
                 documents=documentos,
@@ -95,60 +90,45 @@ def indexar_datos():
             print(f"--- Indexación completa. Documentos guardados en '{PERSIST_DIRECTORY}'. ---")
         except Exception as e:
             print(f"\n❌ ERROR CRÍTICO DE INDEXACIÓN: {e}")
-            print("El chatbot no funcionará hasta que se indexen los datos (revisa tu cuota de Gemini).")
             
     else:
         print(f"--- Colección ya indexada ({collection.count()} documentos). Cargando desde '{PERSIST_DIRECTORY}'. ---")
 
-
-# Ejecutar la indexación al iniciar la aplicación
 with app.app_context():
     indexar_datos()
 
 # --- 4. FUNCIÓN CENTRAL DEL CHATBOT RAG (Generación) ---
 
 def generar_respuesta_chatbot(query, n_results=2):
-    """
-    Busca contexto en ChromaDB y usa Gemini para generar una respuesta de recomendación.
-    """
     if collection.count() == 0:
-        return "Lo siento, la base de conocimiento está vacía. Debes indexar los datos primero (revisa la cuota de la API)."
+        return "Lo siento, la base de conocimiento está vacía..."
         
     try:
-        # A. Recuperación
         query_embedding = get_gemini_embedding(query)
-
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results
         )
         
-        # B. Aumento y C. Generación
         contexto_recuperado = "RECOMENDACIONES DE CAUSAS ENCONTRADAS:\n"
         
         if results and results['documents'] and results['documents'][0]:
             for i in range(len(results['documents'][0])):
-                titulo = results['metadatas'][0][i]['titulo']
-                preferencias = results['metadatas'][0][i]['preferencias']
+                # (El contexto se construye igual, usando el documento completo)
                 documento = results['documents'][0][i]
-                
-                contexto_recuperado += (
-                    f"### CAUSA {i+1} (Título: {titulo})\n"
-                    f"Etiquetas: {preferencias}\n"
-                    f"Detalle: {documento}\n\n"
-                )
+                contexto_recuperado += f"### CAUSA {i+1}\n{documento}\n\n"
 
-        # 🌟 NUEVO SYSTEM PROMPT: Pide una pregunta de confirmación en lugar de un código secreto.
+        # 🌟 MODIFICACIÓN 2: Nuevas instrucciones en el System Prompt
         system_prompt = (
             "Eres un 'Asistente Recomendador de Beneficencia' llamado RAG-Bot. "
-            "Tu trabajo es analizar la consulta del usuario y las 'RECOMENDACIONES DE CAUSAS' proporcionadas. "
-            "Genera una respuesta concisa y amigable que sugiera la mejor asociación. "
-            "Destaca el **Título** de la causa y explica por qué se alinea con sus intereses. "
-            "\n**IMPORTANTE: Si el usuario expresa una clara intención de donar (ej. 'si quiero donar', 'quiero pagar'), "
-            "NO incluyas un código. En su lugar, responde con una pregunta de confirmación como: "
-            "'¡Excelente! ¿Te gustaría que te dirija a la página de donaciones para esta causa?' e incluye el código [INTENT:CONFIRM_DONATE] al final.**"
+            "Tu trabajo es analizar la consulta del usuario y las 'RECOMENDACIONES DE CAUSAS' proporcionadas (que incluyen un 'ID de la Causa')."
+            "\n1. Si el usuario pide información general o una recomendación (ej. 'ayudar animales'), responde normalmente y sugiere la mejor causa."
+            "\n2. Si el usuario pregunta por una *iniciativa específica* (ej. 'qué es Patitas Felices', 'háblame del Fondo Global'), "
+            "resume la información y **DEBES** añadir al final el código: [INTENT:SHOW_DETAILS][URL:/iniciativa/ID_DE_LA_CAUSA]. "
+            "Reemplaza 'ID_DE_LA_CAUSA' con el ID numérico que encontraste en el contexto."
+            "\n3. Si el usuario expresa intención de donar (ej. 'quiero pagar'), responde con una pregunta de confirmación y "
+            "**DEBES** añadir el código: [INTENT:CONFIRM_DONATE]."
         )
-
 
         prompt_final = (
             f"{system_prompt}\n\n"
@@ -161,50 +141,64 @@ def generar_respuesta_chatbot(query, n_results=2):
             contents=prompt_final,
         )
         
-        respuesta_modelo = response.text
-        return respuesta_modelo
+        return response.text
 
     except Exception as e:
-        return f"Lo siento, hubo un error al procesar tu solicitud: {e}. Podría ser un límite de cuota o un error de conexión."
+        return f"Lo siento, hubo un error al procesar tu solicitud: {e}."
 
 # --- 5. RUTAS DE FLASK (API) ---
 
 @app.route("/")
 def index():
-    """Ruta principal que sirve el archivo HTML."""
     return render_template("index.html")
 
 @app.route("/api/chat", methods=["POST"])
 def chat_endpoint():
-    """Endpoint para la comunicación del chatbot (MODIFICADO PARA OFRECER DONACIÓN)."""
     data = request.get_json()
     user_prompt = data.get("prompt", "")
 
     if not user_prompt:
         return jsonify({"respuesta": "Error: Se requiere el campo 'prompt'."}), 400
     
-    # 1. Obtenemos la respuesta de texto de Gemini
     respuesta_texto = generar_respuesta_chatbot(user_prompt)
 
-    # 2. 🌟 LÓGICA DE ACCIÓN (Botones)
+    # 🌟 MODIFICACIÓN 3: Lógica de Acciones (Botones)
     action = "none"
     url = ""
+    button_text = "" # Nuevo campo para el texto del botón
     
-    # Busca el código de confirmación en la respuesta de Gemini
+    # Acción 1: Confirmar Donación
     if "[INTENT:CONFIRM_DONATE]" in respuesta_texto:
-        action = "offer_donation" # <-- Nueva acción para mostrar botones
-        url = "/donaciones" # <-- Tu URL de donaciones
-        
-        # Limpiamos el código secreto para que el usuario no lo vea
+        action = "offer_donation"
+        url = "/donaciones" # URL genérica de donaciones
         respuesta_texto = respuesta_texto.replace("[INTENT:CONFIRM_DONATE]", "").strip()
+
+    # Acción 2: Mostrar Detalles de Iniciativa
+    elif "[INTENT:SHOW_DETAILS]" in respuesta_texto:
+        action = "offer_details"
+        # Extraemos la URL que Gemini construyó
+        match = re.search(r"\[URL:(.*?)\]", respuesta_texto)
+        if match:
+            url = match.group(1) # ej. "/iniciativa/103"
+            
+            # (Opcional) Extraer el título del contexto para el botón
+            # Por simplicidad, usaremos un texto genérico
+            button_text = "Ver más detalles" 
+        
+        # Limpiamos los códigos de la respuesta
+        respuesta_texto = re.sub(r"\[INTENT:SHOW_DETAILS\]", "", respuesta_texto)
+        respuesta_texto = re.sub(r"\[URL:.*?\]", "", respuesta_texto).strip()
 
     # 3. Enviamos el JSON con la respuesta Y la acción
     return jsonify({
         "respuesta": respuesta_texto,
         "action": action,
-        "url": url
+        "url": url,
+        "button_text": button_text # Enviamos el texto del botón
     })
 
 if __name__ == "__main__":
+    # ❗️ IMPORTANTE: Borra la carpeta 'chroma_db_data' ANTES de ejecutar esto
+    # para forzar la reindexación con los IDs.
     print(f"Iniciando servidor Flask. Accede a http://127.0.0.1:{FLASK_PORT}/")
     app.run(debug=True, host='0.0.0.0', port=FLASK_PORT)
