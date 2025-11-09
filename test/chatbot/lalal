@@ -1,0 +1,132 @@
+import os
+import re
+import pandas as pd
+import chromadb
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
+from dotenv import load_dotenv
+
+# 1. Cargar la API Key desde el archivo .env
+load_dotenv()
+
+# 2. Importar la clase Client, como en la documentación
+from google.genai import Client
+
+# 3. Configuración del script
+EMBEDDING_MODEL = 'models/text-embedding-004'
+CHAT_MODEL = 'gemini-1.5-flash-latest'
+PERSIST_DIRECTORY = "chroma_db_data"
+FLASK_PORT = 5218
+
+app = Flask(__name__)
+CORS(app)
+
+# 4. Crear la instancia del cliente, como en la documentación
+try:
+    # Client() buscará la API key en las variables de entorno cargadas por load_dotenv()
+    client_gemini = Client()
+    print("✅ Cliente de Gemini inicializado correctamente usando la clase Client.")
+except Exception as e:
+    print(f"❌ ERROR CRÍTICO AL INICIALIZAR EL CLIENTE DE GEMINI: {e}")
+    print("   Asegúrate de que tu archivo .env contiene una GEMINI_API_KEY válida.")
+    exit()
+
+client_chroma = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
+collection = client_chroma.get_or_create_collection(name="mi_base_de_conocimiento")
+
+# --- DATOS DE EJEMPLO (Sin cambios) ---
+data = {
+    'id': [101, 102, 103, 104, 105],
+    'titulo': ["Fondo Global para la Conservación de Océanos", "Asociación de Apoyo Educativo para Niños", "Albergue de Rescate Animal 'Patitas Felices'", "Iniciativa para el Suministro de Agua Potable", "Red de Asistencia a Personas Mayores en Hogares"],
+    'descripcion': ["Asociación dedicada a la limpieza de plásticos marinos y protección de especies.", "Ofrece becas y tutorías a niños de bajos ingresos.", "Rescata perros y gatos abandonados.", "Organización que instala filtros de agua en zonas rurales.", "Proporciona compañía y alimentos a personas mayores."],
+    'preferencias': ["Medio Ambiente, Océanos", "Educación, Niños", "Animales, Adopción", "Salud, Agua", "Personas Mayores, Voluntariado"]
+}
+df = pd.DataFrame(data)
+
+# --- FASE DE INDEXACIÓN (Usando client.models) ---
+def get_gemini_embedding(text):
+    response = client_gemini.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text
+    )
+    return response.embeddings[0].values
+
+def indexar_datos():
+    if collection.count() == 0:
+        print("--- Indexando datos... ---")
+        try:
+            docs, metas, ids = [], [], []
+            for _, row in df.iterrows():
+                texto = f"ID: {row['id']}. Título: {row['titulo']}. Desc: {row['descripcion']}. Tags: {row['preferencias']}"
+                docs.append(texto)
+                metas.append({'titulo': row['titulo']})
+                ids.append(str(row['id']))
+
+            embeddings = [get_gemini_embedding(doc) for doc in docs]
+            collection.add(embeddings=embeddings, documents=docs, metadatas=metas, ids=ids)
+            print("--- Indexación completa. ---")
+        except Exception as e:
+            print(f"❌ ERROR DE INDEXACIÓN: {e}")
+    else:
+        print(f"--- Colección ya indexada ({collection.count()} docs). ---")
+
+with app.app_context():
+    indexar_datos()
+
+# --- FUNCIÓN CENTRAL DEL CHATBOT RAG (Usando client.models) ---
+def generar_respuesta_chatbot(query, n_results=2):
+    try:
+        query_embedding = client_gemini.models.embed_content(model=EMBEDDING_MODEL, contents=query).embeddings[0].values
+        results = collection.query(query_embeddings=[query_embedding], n_results=n_results)
+        
+        contexto = "RECOMENDACIONES:\n"
+        if results and results['documents'] and results['documents'][0]:
+            for doc in results['documents'][0]:
+                contexto += f"- {doc}\n"
+
+        system_prompt = (
+            "Eres RAG-Bot, un recomendador de beneficencia. Analiza la consulta y las RECOMENDACIONES."
+            "\nSi el usuario pregunta por una iniciativa específica (ej. 'Patitas Felices'), resume su info y AÑADE al final: [INTENT:SHOW_DETAILS][URL:/iniciativa/ID_DE_LA_CAUSA]. Reemplaza el ID."
+            "\nSi el usuario quiere donar (ej. 'quiero pagar'), pregunta para confirmar y AÑADE: [INTENT:CONFIRM_DONATE]."
+        )
+        prompt_final = f"{system_prompt}\n\n{contexto}\nPregunta del usuario: '{query}'"
+        
+        response = client_gemini.models.generate_content(
+            model=CHAT_MODEL,
+            contents=prompt_final,
+        )
+        return response.text
+    except Exception as e:
+        return f"Error al procesar la solicitud: {e}."
+
+# --- RUTAS DE FLASK (Sin cambios) ---
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/api/chat", methods=["POST"])
+def chat_endpoint():
+    user_prompt = request.json.get("prompt", "")
+    if not user_prompt:
+        return jsonify({"respuesta": "Error: prompt requerido."}), 400
+    
+    respuesta_texto = generar_respuesta_chatbot(user_prompt)
+
+    action, url, button_text = "none", "", ""
+    if "[INTENT:CONFIRM_DONATE]" in respuesta_texto:
+        action = "offer_donation"
+        url = "/donaciones"
+        respuesta_texto = respuesta_texto.replace("[INTENT:CONFIRM_DONATE]", "").strip()
+    elif "[INTENT:SHOW_DETAILS]" in respuesta_texto:
+        action = "offer_details"
+        match = re.search(r"\[URL:(.*?)\]", respuesta_texto)
+        if match:
+            url = match.group(1)
+            button_text = "Ver más detalles"
+        respuesta_texto = re.sub(r"\[INTENT:SHOW_DETAILS\]|\[URL:.*?\]", "", respuesta_texto).strip()
+
+    return jsonify({"respuesta": respuesta_texto, "action": action, "url": url, "button_text": button_text})
+
+if __name__ == "__main__":
+    print(f"Iniciando servidor Flask en http://127.0.0.1:{FLASK_PORT}/")
+    app.run(debug=True, host='0.0.0.0', port=FLASK_PORT)
