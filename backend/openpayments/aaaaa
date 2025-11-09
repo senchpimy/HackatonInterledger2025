@@ -1,0 +1,203 @@
+package openpayments
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"fmt"
+	"log"
+
+	op "github.com/interledger/open-payments-go"
+	as "github.com/interledger/open-payments-go/generated/authserver"
+	rs "github.com/interledger/open-payments-go/generated/resourceserver"
+	"gofundme-backend/store" // Asegúrate que la ruta sea correcta
+)
+
+// PaymentContinuationInfo contiene los datos para finalizar un pago interactivo.
+// Debes guardar esto (ej. en una sesión de usuario o cache) entre los dos pasos.
+type PaymentContinuationInfo struct {
+	ContinueURI         string `json:"continue_uri"`
+	ContinueAccessToken string `json:"continue_access_token"`
+	QuoteID             string `json:"quote_id"`
+	WalletAddressID     string `json:"wallet_address_id"`
+	ResourceServerURL   string `json:"resource_server_url"`
+}
+
+// NewClient crea un cliente autenticado usando las credenciales del emisor desde la DB.
+func NewClient(userID int) (*op.AuthenticatedClient, string, error) {
+	var senderWalletAddressURL, keyID, privateKeyPEM string
+	err := store.DB.QueryRow("SELECT wallet_address, key_id, private_key_pem FROM users WHERE id = ?", userID).Scan(&senderWalletAddressURL, &keyID, &privateKeyPEM)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, "", fmt.Errorf("usuario con ID %d no encontrado", userID)
+		}
+		return nil, "", fmt.Errorf("error al leer datos del usuario: %w", err)
+	}
+
+	privateKeyBase64 := base64.StdEncoding.EncodeToString([]byte(privateKeyPEM))
+
+	client, err := op.NewAuthenticatedClient(senderWalletAddressURL, privateKeyBase64, keyID)
+	if err != nil {
+		return nil, "", fmt.Errorf("no se pudo crear el cliente autenticado: %w", err)
+	}
+
+	log.Printf("✅ Cliente autenticado creado para %s", senderWalletAddressURL)
+	return client, senderWalletAddressURL, nil
+}
+
+// InitiatePayment inicia el flujo de pago y devuelve la URL para la aprobación del usuario.
+func InitiatePayment(ctx context.Context, senderClient *op.AuthenticatedClient, senderWalletAddressURL string, receiverWalletAddressURL string, amountValue string) (string, *PaymentContinuationInfo, error) {
+
+	// --- PASO 1: Obtener detalles de las Wallet Addresses ---
+	sendingWalletAddress, err := senderClient.WalletAddress.Get(ctx, op.WalletAddressGetParams{URL: senderWalletAddressURL})
+	if err != nil {
+		return "", nil, fmt.Errorf("error obteniendo la wallet emisora: %w", err)
+	}
+	receivingWalletAddress, err := senderClient.WalletAddress.Get(ctx, op.WalletAddressGetParams{URL: receiverWalletAddressURL})
+	if err != nil {
+		return "", nil, fmt.Errorf("error obteniendo la wallet receptora: %w", err)
+	}
+
+	// --- PASO 2: Obtener Grant para crear Incoming Payment ---
+	incomingAccess := as.AccessIncoming{
+		Type:    as.IncomingPayment,
+		Actions: []as.AccessIncomingActions{as.AccessIncomingActionsCreate},
+	}
+	incomingAccessItem := as.AccessItem{}
+	if err := incomingAccessItem.FromAccessIncoming(incomingAccess); err != nil {
+		return "", nil, fmt.Errorf("error al crear AccessItem para incoming payment: %w", err)
+	}
+	incomingPaymentGrant, err := senderClient.Grant.Request(ctx, op.GrantRequestParams{
+		URL: *receivingWalletAddress.AuthServer,
+		RequestBody: as.GrantRequestWithAccessToken{
+			AccessToken: struct {
+				Access as.Access `json:"access"`
+			}{Access: []as.AccessItem{incomingAccessItem}},
+		},
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("error solicitando grant para incoming payment: %w", err)
+	}
+
+	// --- PASO 3: Crear el Incoming Payment ---
+	incomingPayment, err := senderClient.IncomingPayment.Create(ctx, op.IncomingPaymentCreateParams{
+		BaseURL:     *receivingWalletAddress.ResourceServer,
+		AccessToken: incomingPaymentGrant.AccessToken.Value,
+		Payload: rs.CreateIncomingPaymentJSONBody{
+			WalletAddressSchema: *receivingWalletAddress.Id,
+			IncomingAmount: &rs.Amount{
+				Value:      amountValue, // Variable dinámica
+				AssetCode:  receivingWalletAddress.AssetCode,
+				AssetScale: receivingWalletAddress.AssetScale,
+			},
+		},
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("error creando el incoming payment: %w", err)
+	}
+
+	// --- PASO 4: Obtener Grant para crear Quote ---
+	quoteAccess := as.AccessQuote{Type: as.Quote, Actions: []as.AccessQuoteActions{as.Create}}
+	quoteAccessItem := as.AccessItem{}
+	if err := quoteAccessItem.FromAccessQuote(quoteAccess); err != nil {
+		return "", nil, fmt.Errorf("error al crear AccessItem para quote: %w", err)
+	}
+	quoteGrant, err := senderClient.Grant.Request(ctx, op.GrantRequestParams{
+		URL: *sendingWalletAddress.AuthServer,
+		RequestBody: as.GrantRequestWithAccessToken{
+			AccessToken: struct {
+				Access as.Access `json:"access"`
+			}{Access: []as.AccessItem{quoteAccessItem}},
+		},
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("error solicitando grant para quote: %w", err)
+	}
+
+	// --- PASO 5: Crear la Quote ---
+	quote, err := senderClient.Quote.Create(ctx, op.QuoteCreateParams{
+		BaseURL:     *sendingWalletAddress.ResourceServer,
+		AccessToken: quoteGrant.AccessToken.Value,
+		Payload: rs.CreateQuoteJSONBody0{
+			WalletAddressSchema: *sendingWalletAddress.Id,
+			Receiver:            *incomingPayment.Id,
+			Method:              "ilp",
+		},
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("error creando la quote: %w", err)
+	}
+
+	// --- PASO 6: Solicitar Grant interactivo para Outgoing Payment ---
+	limitData := as.LimitsOutgoing1{DebitAmount: as.Amount(quote.DebitAmount)}
+	var limits as.LimitsOutgoing
+	if err = limits.FromLimitsOutgoing1(limitData); err != nil {
+		return "", nil, fmt.Errorf("error al crear los límites para el grant: %w", err)
+	}
+	outgoingAccess := as.AccessOutgoing{
+		Type:       as.OutgoingPayment,
+		Actions:    []as.AccessOutgoingActions{as.AccessOutgoingActionsCreate},
+		Identifier: *sendingWalletAddress.Id,
+		Limits:     &limits,
+	}
+	outgoingAccessItem := as.AccessItem{}
+	if err := outgoingAccessItem.FromAccessOutgoing(outgoingAccess); err != nil {
+		return "", nil, fmt.Errorf("error al crear AccessItem para outgoing payment: %w", err)
+	}
+	outgoingPaymentGrant, err := senderClient.Grant.Request(ctx, op.GrantRequestParams{
+		URL: *sendingWalletAddress.AuthServer,
+		RequestBody: as.GrantRequestWithAccessToken{
+			AccessToken: struct {
+				Access as.Access `json:"access"`
+			}{Access: []as.AccessItem{outgoingAccessItem}},
+			Interact: &as.InteractRequest{Start: []as.InteractRequestStart{as.InteractRequestStartRedirect}},
+		},
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("error solicitando grant para outgoing payment: %w", err)
+	}
+
+	// --- FIN: Preparar la información para continuar y devolver la URL ---
+	continuationInfo := &PaymentContinuationInfo{
+		ContinueURI:         outgoingPaymentGrant.Continue.Uri,
+		ContinueAccessToken: outgoingPaymentGrant.Continue.AccessToken.Value,
+		QuoteID:             *quote.Id,
+		WalletAddressID:     *sendingWalletAddress.Id,
+		ResourceServerURL:   *sendingWalletAddress.ResourceServer,
+	}
+
+	return outgoingPaymentGrant.Interact.Redirect, continuationInfo, nil
+}
+
+// FinalizePayment completa el pago después de la aprobación del usuario.
+func FinalizePayment(ctx context.Context, senderClient *op.AuthenticatedClient, info *PaymentContinuationInfo) (*rs.OutgoingPayment, error) {
+	// --- PASO 8: Continuar el Grant para finalizarlo ---
+	finalizedGrant, err := senderClient.Grant.Continue(ctx, op.GrantContinueParams{
+		URL:         info.ContinueURI,
+		AccessToken: info.ContinueAccessToken,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error al continuar el grant: %w", err)
+	}
+
+	// --- PASO 9: Crear el Outgoing Payment ---
+	var paymentPayload rs.CreateOutgoingPaymentRequest
+	err = paymentPayload.FromCreateOutgoingPaymentWithQuote(rs.CreateOutgoingPaymentWithQuote{
+		WalletAddressSchema: info.WalletAddressID,
+		QuoteId:             info.QuoteID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creando payload del outgoing payment: %w", err)
+	}
+	outgoingPayment, err := senderClient.OutgoingPayment.Create(ctx, op.OutgoingPaymentCreateParams{
+		BaseURL:     info.ResourceServerURL,
+		AccessToken: finalizedGrant.AccessToken.Value,
+		Payload:     paymentPayload,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creando el outgoing payment: %w", err)
+	}
+
+	log.Printf("✅ Outgoing Payment creado con éxito: %s", *outgoingPayment.Id)
+	return &outgoingPayment, nil
+}
