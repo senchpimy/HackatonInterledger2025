@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Inicializar la base de datos
-	store.InitDB("gofundme.db")
+	store.InitDB("bd.db")
 	log.Println("Base de datos inicializada correctamente.")
 
 	r := mux.NewRouter()
