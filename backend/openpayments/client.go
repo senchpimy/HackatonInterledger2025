@@ -89,7 +89,7 @@ func (c *Client) CreateIncomingPayment(ctx context.Context, receivingWalletAddre
 		AccessToken: incomingPaymentGrant.AccessToken.Value,
 		Payload: rs.CreateIncomingPaymentJSONBody{
 			WalletAddressSchema: *receivingWalletAddress.Id,
-			Description:       &description,
+			//Description:       &description,
 			IncomingAmount: &rs.Amount{
 				Value:      fmt.Sprintf("%d", amount),
 				AssetCode:  receivingWalletAddress.AssetCode,
