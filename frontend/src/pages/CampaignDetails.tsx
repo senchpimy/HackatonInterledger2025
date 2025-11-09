@@ -60,7 +60,10 @@ const CampaignDetails = () => {
   return (
     <>
       <div className="max-w-4xl mx-auto bg-gray-800 p-8 rounded-lg shadow-lg text-white">
-        <h1 className="text-4xl font-bold text-teal-400 mb-4">{campaign.title}</h1>
+        <h1 className="text-4xl font-bold text-teal-400 mb-2">{campaign.title}</h1>
+        {campaign.creatorUsername && (
+          <p className="text-gray-500 text-lg italic mb-4">Creado por: {campaign.creatorUsername}</p>
+        )}
         
         <div className="mb-6">
           <p className="text-gray-300 leading-relaxed">{campaign.description}</p>

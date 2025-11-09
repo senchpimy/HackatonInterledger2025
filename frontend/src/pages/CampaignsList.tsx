@@ -10,6 +10,9 @@ const CampaignCard = ({ campaign }: { campaign: Campaign }) => {
     <div className="bg-gray-800/50 ring-1 ring-white/10 rounded-xl shadow-lg overflow-hidden transition-all duration-300 ease-in-out hover:shadow-2xl hover:shadow-teal-900/60 hover:-translate-y-1 hover:ring-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 h-full">
       <div className="p-6 flex flex-col h-full">
         <h2 className="text-xl font-bold text-gray-100 truncate">{campaign.title}</h2>
+        {campaign.creatorUsername && (
+          <p className="text-gray-500 text-sm italic mt-1">Creado por: {campaign.creatorUsername}</p>
+        )}
         
         <p className="text-gray-400 mt-2 line-clamp-2 flex-grow min-h-[40px]">{campaign.description}</p>
         

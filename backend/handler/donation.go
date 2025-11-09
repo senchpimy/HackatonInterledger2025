@@ -41,20 +41,18 @@ func CreateDonationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	opClient := &openpayments.Client{HttpClient: &http.Client{}}
-	
-	// Open Payments usa unidades menores (ej. centavos). Convertimos el monto.
-	// Para este ejemplo, asumimos una escala de 2 decimales (como en USD).
-	amountInMinorUnits := strconv.FormatInt(int64(math.Round(req.Amount*100)), 10)
-
-	opAmount := openpayments.Amount{
-		Value:      amountInMinorUnits,
-		AssetCode:  req.Currency,
-		AssetScale: 2,
+	opClient, err := openpayments.NewClient()
+	if err != nil {
+		http.Error(w, "Error al inicializar el cliente de Open Payments", http.StatusInternalServerError)
+		return
 	}
+
+	// Open Payments usa unidades menores (ej. centavos). Convertimos el monto.
+	amountInMinorUnits := int64(math.Round(req.Amount * 100))
+
 	description := "Donación para la campaña: " + campaign.Title
 
-	incomingPayment, err := opClient.CreateIncomingPayment(campaign.PaymentPointer, opAmount, description)
+	incomingPayment, err := opClient.CreateIncomingPayment(r.Context(), campaign.PaymentPointer, amountInMinorUnits, description)
 	if err != nil {
 		http.Error(w, "No se pudo procesar la solicitud de donación con Open Payments", http.StatusInternalServerError)
 		return

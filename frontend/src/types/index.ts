@@ -9,6 +9,7 @@ export interface Campaign {
   currency: string;
   paymentPointer: string;
   createdAt: string;
+  creatorUsername?: string;
 }
 
 export interface IlpStreamConnection {

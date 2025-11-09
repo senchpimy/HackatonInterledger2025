@@ -52,8 +52,7 @@ func createTable() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT NOT NULL UNIQUE,
 		password_hash TEXT NOT NULL,
-		wallet_address TEXT NOT NULL,
-		key_id TEXT NOT NULL
+		wallet_address TEXT NOT NULL
 	);`
 
 	_, err = DB.Exec(userQuery)
