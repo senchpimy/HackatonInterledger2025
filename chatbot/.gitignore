@@ -1,0 +1,16 @@
+# Ignorar archivos binarios
+*.bin
+
+# Ignorar carpetas de builds
+/build/
+/dist/
+
+# Ignorar archivos temporales
+*.log
+*.tmp
+
+# Ignorar configuraciones del sistema o IDE
+.DS_Store
+*.swp
+.vscode/
+

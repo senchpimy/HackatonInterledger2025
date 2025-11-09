@@ -15,7 +15,6 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		Username      string `json:"username"`
 		Password      string `json:"password"`
 		WalletAddress string `json:"walletAddress"`
-		KeyID         string `json:"keyId"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
@@ -23,7 +22,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if requestBody.Username == "" || requestBody.Password == "" || requestBody.WalletAddress == "" || requestBody.KeyID == "" {
+	if requestBody.Username == "" || requestBody.Password == "" || requestBody.WalletAddress == "" {
 		http.Error(w, "Todos los campos son obligatorios", http.StatusBadRequest)
 		return
 	}
@@ -44,7 +43,6 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	newUser := &model.User{
 		Username:      requestBody.Username,
 		WalletAddress: requestBody.WalletAddress,
-		KeyID:         requestBody.KeyID,
 	}
 
 	if err := store.CreateUser(newUser, requestBody.Password); err != nil {

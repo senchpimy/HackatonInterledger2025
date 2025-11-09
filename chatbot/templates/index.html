@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Recomendador de Beneficencia</title>
+    <style>
+        /* (Tu CSS existente va aquí) */
+        body {
+            font-family: Arial, sans-serif; margin: 0; padding: 0;
+            background-color: #f4f4f9; display: flex; justify-content: center; align-items: center; min-height: 100vh;
+        }
+        #chat-container {
+            width: 90%; max-width: 600px; background-color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;
+        }
+        #chat-header {
+            background-color: #007bff; color: white; padding: 15px; text-align: center; font-size: 1.2em;
+        }
+        #chat-messages {
+            height: 400px; padding: 15px; overflow-y: auto; border-bottom: 1px solid #eee; flex-grow: 1;
+        }
+        .message {
+            margin-bottom: 12px; padding: 8px 14px; border-radius: 18px; max-width: 80%;
+            word-wrap: break-word; line-height: 1.4;
+        }
+        .user-message { background-color: #007bff; color: white; margin-left: auto; }
+        .assistant-message { background-color: #e9ecef; color: #333; margin-right: auto; }
+        
+        .chat-actions {
+            display: flex; gap: 10px; margin: 10px 0 15px; justify-content: center;
+        }
+        .action-button {
+            flex-grow: 1; padding: 10px 15px; border-radius: 20px; border: 1px solid #007bff;
+            background-color: #fff; color: #007bff; cursor: pointer; font-weight: bold;
+            text-align: center; transition: background-color 0.2s, color 0.2s;
+        }
+        .action-button.primary { background-color: #007bff; color: white; }
+        .action-button:hover { opacity: 0.8; }
+
+        #chat-input-container {
+            display: flex; padding: 15px; border-top: 1px solid #eee; background-color: #f9f9f9;
+        }
+        #user-input {
+            flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px;
+            font-size: 16px; margin-right: 10px;
+        }
+        #send-button {
+            padding: 10px 20px; border: none; background-color: #28a745; color: white;
+            cursor: pointer; border-radius: 20px; font-size: 16px; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="chat-header">
+        Recomendador de Beneficencia
+    </div>
+    <div id="chat-messages">
+        <div class="message assistant-message">
+            Hola, soy **RAG-Bot**. ¿Qué tipo de causa te gustaría apoyar hoy?
+        </div>
+    </div>
+    <div id="chat-input-container">
+        <input type="text" id="user-input" placeholder="Escribe tu pregunta aquí..." autofocus>
+        <button id="send-button">Enviar</button>
+    </div>
+</div>
+
+<script>
+    const chatMessages = document.getElementById('chat-messages');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+
+    function removeOldActions() {
+        const oldActions = document.querySelectorAll('.chat-actions');
+        oldActions.forEach(action => action.remove());
+    }
+
+    // 🌟 NUEVO: Función de botones generalizada
+    function createActionButtons(primaryText, primaryUrl, secondaryText) {
+        removeOldActions(); 
+
+        const actionContainer = document.createElement('div');
+        actionContainer.className = 'chat-actions';
+
+        // Botón Primario (Redirección)
+        const primaryButton = document.createElement('button');
+        primaryButton.className = 'action-button primary';
+        primaryButton.innerText = primaryText;
+        primaryButton.onclick = () => {
+            // Redirige a la URL (ej. /donaciones o /iniciativa/103)
+            window.location.href = primaryUrl;
+        };
+
+        // Botón Secundario (Cancelar)
+        const cancelButton = document.createElement('button');
+        cancelButton.className = 'action-button';
+        cancelButton.innerText = secondaryText;
+        cancelButton.onclick = () => {
+            removeOldActions();
+            if (secondaryText === "No, gracias") { // Lógica específica para donación
+                 addMessage("Entendido. ¿Hay algo más en lo que pueda ayudarte?", 'assistant');
+            }
+        };
+
+        actionContainer.appendChild(primaryButton);
+        actionContainer.appendChild(cancelButton);
+        chatMessages.appendChild(actionContainer);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addMessage(message, role) {
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        messageElement.classList.add(role === 'user' ? 'user-message' : 'assistant-message');
+        messageElement.innerHTML = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'); 
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return messageElement;
+    }
+
+    async function sendMessage() {
+        const query = userInput.value.trim();
+        if (query === "") return;
+
+        removeOldActions();
+        addMessage(query, 'user');
+        userInput.value = ''; 
+        
+        const typingMessage = addMessage("Escribiendo...", 'assistant');
+        sendButton.disabled = true;
+
+        try {
+            const response = await fetch('/api/chat', {
+                 method: 'POST',
+                 headers: {'Content-Type': 'application/json'},
+                 body: JSON.stringify({ prompt: query })
+            });
+
+            if (!response.ok) { throw new Error(`Error HTTP: ${response.status}`); }
+
+            const data = await response.json(); 
+            
+            chatMessages.removeChild(typingMessage);
+            
+            if (data.respuesta) {
+                addMessage(data.respuesta, 'assistant');
+            }
+
+            // 🌟 NUEVO: Manejador de Acciones Generalizado
+            if (data.action === "offer_donation" && data.url) {
+                createActionButtons(
+                    'Sí, quiero donar', 
+                    data.url, 
+                    'No, gracias'
+                );
+            } else if (data.action === "offer_details" && data.url) {
+                createActionButtons(
+                    data.button_text || "Ver más", // Usa el texto del backend o uno genérico
+                    data.url, 
+                    'Cerrar'
+                );
+            }
+
+        } catch (error) {
+            console.error('Error al obtener la respuesta:', error);
+            chatMessages.removeChild(typingMessage);
+            addMessage(`**Error de conexión o API:** ${error.message}.`, 'assistant');
+        } finally {
+            sendButton.disabled = false;
+        }
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            sendMessage();
+            event.preventDefault(); 
+        }
+    });
+</script>
+
+</body>
+</html>

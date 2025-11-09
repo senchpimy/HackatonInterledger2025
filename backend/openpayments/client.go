@@ -1,65 +1,127 @@
 package openpayments
 
 import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"io/ioutil"
 	"log"
-	"net/http"
-	"time"
+
+	"gofundme-backend/openpayments/final"
+	op "github.com/interledger/open-payments-go"
+	as "github.com/interledger/open-payments-go/generated/authserver"
+	rs "github.com/interledger/open-payments-go/generated/resourceserver"
 )
 
-// Amount representa un monto monetario en Open Payments.
-// El valor se representa como una cadena de texto en las unidades menores (ej. centavos).
-type Amount struct {
-	Value      string `json:"value"`
-	AssetCode  string `json:"assetCode"`
-	AssetScale int    `json:"assetScale"`
-}
+const (
+	privateKeyPath           = "../test/private.key"
+	keyId                    = "685c6458-134d-4f80-b6e9-5011e397ee3f"
+	clientWalletAddressURL   = "https://ilp.interledger-test.dev/clientzerokm"
+)
 
-// IncomingPaymentRequest es el cuerpo de la petición para crear un pago entrante.
-type IncomingPaymentRequest struct {
-	IncomingAmount Amount    `json:"incomingAmount"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	Description    string    `json:"description"`
-}
-
-// IlpStreamConnection contiene los detalles del Interledger Protocol para el pago.
-type IlpStreamConnection struct {
-	IlpAddress   string `json:"ilpAddress"`
-	SharedSecret string `json:"sharedSecret"`
-}
-
-// IncomingPaymentResponse es la respuesta exitosa al crear un pago entrante.
-// Esto es lo que el frontend necesitará para realizar el pago.
-type IncomingPaymentResponse struct {
-	ID                  string              `json:"id"`
-	PaymentPointer      string              `json:"paymentPointer"`
-	IncomingAmount      Amount              `json:"incomingAmount"`
-	IlpStreamConnection IlpStreamConnection `json:"ilpStreamConnection"`
-	Completed           bool                `json:"completed"`
-	ExpiresAt           time.Time           `json:"expiresAt"`
-	CreatedAt           time.Time           `json:"createdAt"`
-}
-
-// Client es un cliente para interactuar con un servidor de Open Payments.
+// Client is a client for interacting with an Open Payments server.
 type Client struct {
-	HttpClient *http.Client
+	*op.AuthenticatedClient
 }
 
-func (c *Client) CreateIncomingPayment(paymentPointer string, amount Amount, description string) (*IncomingPaymentResponse, error) {
+// NewClient creates and authenticates a new Open Payments client.
+func NewClient() (*Client, error) {
+	pemFileBytes, err := ioutil.ReadFile(privateKeyPath)
+	if err != nil {
+		// Intentar una ruta alternativa si estamos ejecutando desde el directorio del backend
+		log.Printf("No se pudo leer la clave privada en la ruta inicial, intentando ruta alternativa...")
+		pemFileBytes, err = ioutil.ReadFile("../../test/private.key")
+		if err != nil {
+			return nil, fmt.Errorf("error al leer el archivo de la clave privada desde ambas rutas: %v", err)
+		}
+	}
 
-	log.Printf("SIMULANDO: Llamada a Open Payments para crear pago entrante en %s", paymentPointer)
+	privateKeyBase64 := base64.StdEncoding.EncodeToString(pemFileBytes)
 
-	mockResponse := &IncomingPaymentResponse{
-		ID:             "mock-payment-id-12345",
-		PaymentPointer: paymentPointer,
-		IncomingAmount: amount,
-		IlpStreamConnection: IlpStreamConnection{
+	authenticatedClient, err := op.NewAuthenticatedClient(
+		clientWalletAddressURL,
+		privateKeyBase64,
+		keyId,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("no se pudo crear el cliente autenticado: %v", err)
+	}
+
+	log.Println("✅ Cliente de Open Payments autenticado con éxito.")
+	return &Client{AuthenticatedClient: authenticatedClient}, nil
+}
+
+// CreateIncomingPayment creates an incoming payment on the Open Payments server.
+func (c *Client) CreateIncomingPayment(ctx context.Context, receivingWalletAddressURL string, amount int64, description string) (*final.FinalResponse, error) {
+	// 1. Get receiving wallet address details
+	receivingWalletAddress, err := c.WalletAddress.Get(ctx, op.WalletAddressGetParams{URL: receivingWalletAddressURL})
+	if err != nil {
+		return nil, fmt.Errorf("error obteniendo la wallet receptora: %v", err)
+	}
+
+	// 2. Request grant for creating an incoming payment
+	incomingAccess := as.AccessIncoming{
+		Type:    as.IncomingPayment,
+		Actions: []as.AccessIncomingActions{as.AccessIncomingActionsCreate, as.AccessIncomingActionsRead, as.AccessIncomingActionsComplete},
+	}
+	incomingAccessItem := as.AccessItem{}
+	if err := incomingAccessItem.FromAccessIncoming(incomingAccess); err != nil {
+		return nil, fmt.Errorf("error al crear AccessItem para incoming payment: %v", err)
+	}
+
+	incomingPaymentGrant, err := c.Grant.Request(ctx, op.GrantRequestParams{
+		URL: *receivingWalletAddress.AuthServer,
+		RequestBody: as.GrantRequestWithAccessToken{
+			AccessToken: struct {
+				Access as.Access `json:"access"`
+			}{
+				Access: []as.AccessItem{incomingAccessItem},
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error solicitando grant para incoming payment: %v", err)
+	}
+
+	// 3. Create the incoming payment
+	incomingPayment, err := c.IncomingPayment.Create(ctx, op.IncomingPaymentCreateParams{
+		BaseURL:     *receivingWalletAddress.ResourceServer,
+		AccessToken: incomingPaymentGrant.AccessToken.Value,
+		Payload: rs.CreateIncomingPaymentJSONBody{
+			WalletAddressSchema: *receivingWalletAddress.Id,
+			IncomingAmount: &rs.Amount{
+				Value:      fmt.Sprintf("%d", amount),
+				AssetCode:  receivingWalletAddress.AssetCode,
+				AssetScale: receivingWalletAddress.AssetScale,
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error creando el incoming payment: %v", err)
+	}
+
+	return toFinalResponse(&incomingPayment, receivingWalletAddress.Id), nil
+}
+
+func toFinalResponse(ip *rs.IncomingPaymentWithMethods, walletAddressId *string) *final.FinalResponse {
+	// The open-payments-go library does not currently expose the IlpStreamConnection
+	// in the IncomingPaymentWithMethods struct. For now, we will mock this data.
+	// In a real application, you would need to make a separate call to the
+	// /incoming-payments/{id}/connection-details endpoint to get this information.
+	return &final.FinalResponse{
+		ID:             *ip.Id,
+		PaymentPointer: *walletAddressId,
+		IncomingAmount: final.Amount{
+			Value:      ip.IncomingAmount.Value,
+			AssetCode:  ip.IncomingAmount.AssetCode,
+			AssetScale: ip.IncomingAmount.AssetScale,
+		},
+		IlpStreamConnection: final.IlpStreamConnection{
 			IlpAddress:   "g.us.example.mock-payment-id-12345",
 			SharedSecret: "mock_shared_secret_for_testing_only",
 		},
-		Completed: false,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
-		CreatedAt: time.Now(),
+		Completed: ip.Completed,
+		ExpiresAt: *ip.ExpiresAt,
+		CreatedAt: ip.CreatedAt,
 	}
-
-	return mockResponse, nil
 }

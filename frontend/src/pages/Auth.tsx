@@ -7,8 +7,6 @@ const AuthPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
-  const [keyId, setKeyId] = useState('');
-  const [privateKey, setPrivateKey] = useState(''); // Vuelve el estado para la clave privada
   const [error, setError] = useState<string | null>(null);
   
   const { login, register } = useAuth();
@@ -26,11 +24,11 @@ const AuthPage: React.FC = () => {
         }
         await login({ username, password });
       } else {
-        if (!username || !password || !walletAddress || !keyId || !privateKey) {
+        if (!username || !password || !walletAddress) {
           setError('Todos los campos son obligatorios para el registro.');
           return;
         }
-        await register({ username, password, walletAddress, keyId, privateKey });
+        await register({ username, password, walletAddress });
       }
       navigate('/'); // Redirige al inicio después del éxito
     } catch (err: any) {
@@ -81,32 +79,6 @@ const AuthPage: React.FC = () => {
                 onChange={(e) => setWalletAddress(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="https://wallet.example.com/users/alice"
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="keyId" className="block text-sm font-medium text-gray-300">
-                Key ID
-              </label>
-              <input
-                type="text"
-                id="keyId"
-                value={keyId}
-                onChange={(e) => setKeyId(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="https://wallet.example.com/keys/alice-key-1"
-              />
-            </div>
-            <div className="mb-6">
-              <label htmlFor="privateKey" className="block text-sm font-medium text-gray-300">
-                Private Key (Formato PEM)
-              </label>
-              <textarea
-                id="privateKey"
-                value={privateKey}
-                onChange={(e) => setPrivateKey(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                rows={6}
-                placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
               />
             </div>
           </>

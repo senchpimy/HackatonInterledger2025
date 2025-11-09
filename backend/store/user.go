@@ -27,7 +27,7 @@ func CreateUser(user *model.User, password string) error {
 		return err
 	}
 
-	query := "INSERT INTO users (username, password_hash, wallet_address, key_id) VALUES (?, ?, ?, ?)"
+	query := "INSERT INTO users (username, password_hash, wallet_address) VALUES (?, ?, ?)"
 	stmt, err := DB.Prepare(query)
 	if err != nil {
 		log.Printf("Error preparing query: %v", err)
@@ -35,7 +35,7 @@ func CreateUser(user *model.User, password string) error {
 	}
 	defer stmt.Close()
 
-	res, err := stmt.Exec(user.Username, hashedPassword, user.WalletAddress, user.KeyID)
+	res, err := stmt.Exec(user.Username, hashedPassword, user.WalletAddress)
 	if err != nil {
 		log.Printf("Error executing query: %v", err)
 		return err
@@ -54,11 +54,11 @@ func CreateUser(user *model.User, password string) error {
 
 // GetUserByUsername busca un usuario por su nombre de usuario.
 func GetUserByUsername(username string) (*model.User, error) {
-	query := "SELECT id, username, password_hash, wallet_address, key_id FROM users WHERE username = ?"
+	query := "SELECT id, username, password_hash, wallet_address FROM users WHERE username = ?"
 	row := DB.QueryRow(query, username)
 
 	var user model.User
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.WalletAddress, &user.KeyID)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash, &user.WalletAddress)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // No es un error, simplemente no se encontró el usuario.
