@@ -79,7 +79,7 @@
   margin-bottom: 8px; /* mb-2 */
 }
 
-.chatbot-response a button {
+.chatbot-button {
   margin-top: 12px; /* mt-3 */
   padding: 8px 16px; /* px-4 py-2 */
   background-color: #2563eb; /* bg-blue-600 */
@@ -90,7 +90,7 @@
   transition-duration: 300ms; /* transition-colors duration-300 */
 }
 
-.chatbot-response a button:hover {
+.chatbot-button:hover {
   background-color: #1d4ed8; /* hover:bg-blue-700 */
 }
 
@@ -100,4 +100,40 @@
   padding: 12px; /* p-3 */
   border-radius: 6px; /* rounded-md */
   margin-bottom: 16px; /* mb-4 */
+}
+
+/* Chat History Styles */
+.chat-history {
+  margin-top: 20px;
+  max-height: 400px; /* Limit height to enable scrolling */
+  overflow-y: auto; /* Enable vertical scrolling */
+  padding-right: 10px; /* Add some padding for scrollbar */
+}
+
+.chat-message-pair {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 8px;
+  background-color: #374151; /* bg-gray-700 */
+  text-align: left;
+}
+
+.user-message {
+  color: #93c5fd; /* blue-300 */
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.bot-message {
+  color: #e5e7eb; /* gray-200 */
+  line-height: 1.5;
+}
+
+.bot-message strong {
+  color: #2dd4bf; /* teal-400 */
+}
+
+.bot-message .chatbot-button {
+  margin-top: 10px;
+  display: inline-block; /* To allow margin-top to work */
 }

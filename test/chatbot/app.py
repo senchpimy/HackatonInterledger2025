@@ -56,10 +56,19 @@ def get_gemini_embedding(text):
     return response.embeddings[0].values
 
 def indexar_datos():
+    global collection # <-- ¡LA LÍNEA CLAVE QUE SOLUCIONA TODO!
+
     # Primero, borramos la colección antigua para asegurar datos frescos
-    client_chroma.delete_collection(name="mi_base_de_conocimiento")
+    # Ahora esto borrará la colección a la que apunta la variable global
+    try:
+        client_chroma.delete_collection(name="mi_base_de_conocimiento")
+        print("--- Colección antigua eliminada. Preparando para re-indexar. ---")
+    except Exception as e:
+        # Es posible que la colección no exista la primera vez, lo cual está bien.
+        print(f"--- No se pudo eliminar la colección (puede que no existiera): {e} ---")
+
+    # Esta línea ahora modificará la variable global 'collection'
     collection = client_chroma.get_or_create_collection(name="mi_base_de_conocimiento")
-    print("--- Colección antigua eliminada. Preparando para re-indexar. ---")
     
     campaigns_data = fetch_campaigns_from_go_api()
     
@@ -80,19 +89,18 @@ def indexar_datos():
     # ❗️ IMPORTANTE: El JSON de Go usa mayúsculas iniciales (Title, Description, etc.)
     for campaign in campaigns_data:
         texto_completo = (
-            f"ID de la Causa: {campaign['ID']}. "
-            f"Título: {campaign['Title']}. "
-            f"Descripción: {campaign['Description']}. "
-            # Podemos añadir más campos si son útiles para el contexto
-            f"Meta de recaudación: {campaign['Goal']} {campaign['Currency']}. "
-            f"Creador: {campaign['CreatorUsername']}."
+            f"ID de la Causa: {campaign['id']}. "
+            f"Título: {campaign['title']}. "
+            f"Descripción: {campaign['description']}. "
+            f"Meta de recaudación: {campaign['goal']} {campaign['currency']}. "
+            #f"Creador: {campaign['CreatorUsername']}."
         )
         documentos.append(texto_completo)
-        # Los metadatos son opcionales, pero útiles si los necesitas
-        metadatos.append({'titulo': campaign['Title']}) 
-        ids.append(str(campaign['ID']))
+        metadatos.append({'titulo': campaign['title']}) 
+        ids.append(str(campaign['id']))
 
     try:
+        # Usamos directamente la variable 'collection' que ahora es la global actualizada
         embeddings_list = [get_gemini_embedding(doc) for doc in documentos]
         collection.add(
             embeddings=embeddings_list,
@@ -131,7 +139,7 @@ def generar_respuesta_chatbot(query, n_results=2):
             "Tu trabajo es analizar la consulta del usuario y las 'RECOMENDACIONES DE CAUSAS' proporcionadas (que incluyen un 'ID de la Causa')."
             "\n1. Si el usuario pide información general o una recomendación (ej. 'ayudar animales'), responde normalmente y sugiere la mejor causa."
             "\n2. Si el usuario pregunta por una *iniciativa específica* (ej. 'qué es Patitas Felices', 'háblame del Fondo Global'), "
-            "resume la información y **DEBES** añadir al final el código: [INTENT:SHOW_DETAILS][URL:/iniciativa/ID_DE_LA_CAUSA]. "
+            "resume la información y **DEBES** añadir al final el código: [INTENT:SHOW_DETAILS][URL:/campaigns/ID_DE_LA_CAUSA]. "
             "Reemplaza 'ID_DE_LA_CAUSA' con el ID numérico que encontraste en el contexto."
             "\n3. Si el usuario expresa intención de donar (ej. 'quiero pagar'), responde con una pregunta de confirmación y "
             "**DEBES** añadir el código: [INTENT:CONFIRM_DONATE]."
@@ -181,7 +189,7 @@ def chat_endpoint():
         respuesta_texto = respuesta_texto.replace("[INTENT:CONFIRM_DONATE]", "").strip()
 
     # Acción 2: Mostrar Detalles de Iniciativa
-    elif "[INTENT:SHOW_DETAILS]" in respuesta_texto:
+    elif "[INTENT:SHOW_DETAILS]" in respuesta_texto or "[INTENT:CONFIRM_DONATE]" in respuesta_texto:
         action = "offer_details"
         # Extraemos la URL que Gemini construyó
         match = re.search(r"\[URL:(.*?)\]", respuesta_texto)
@@ -205,6 +213,7 @@ def chat_endpoint():
     })
 
 if __name__ == "__main__":
+    indexar_datos()
     # ❗️ IMPORTANTE: Borra la carpeta 'chroma_db_data' ANTES de ejecutar esto
     # para forzar la reindexación con los IDs.
     print(f"Iniciando servidor Flask. Accede a http://127.0.0.1:{FLASK_PORT}/")
