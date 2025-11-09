@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    /* 
+      Usa @apply para aplicar clases de Tailwind directamente aquí.
+      Esto establece el color de fondo y de texto por defecto para toda la app.
+    */
+    @apply bg-slate-900 text-slate-200 antialiased;
+    font-family: 'Times New Roman', serif;
+  }
+
+   a {
+    @apply text-blue-500;
+  }
+
+   a.block {
+    @apply text-inherit! no-underline!;
+  }
+
+
+}
